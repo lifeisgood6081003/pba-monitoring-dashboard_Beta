@@ -1,4 +1,6 @@
+pyserial
 streamlit
 pandas
 numpy
 plotly
+openpyxl
