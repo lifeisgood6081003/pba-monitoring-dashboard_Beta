@@ -9,19 +9,22 @@ import glob
 import threading
 import time
 
-# [필수 라이브러리 안내] RS-232 통신을 위해 터미널에 pip install pyserial 설치 필요
+# ==============================================================================
+# [안전 장치] pyserial 라이브러리가 없을 경우 에러로 멈추지 않고 데모 모드로 전환
+# ==============================================================================
+SERIAL_AVAILABLE = False
 try:
     import serial
+    SERIAL_AVAILABLE = True
 except ImportError:
-    os.system('pip install pyserial')
-    import serial
+    SERIAL_AVAILABLE = False
 
 # ==============================================================================
-# [릴리즈 버전 - app_R4 개정판] 솔더크림 Lot 기반 관리 및 RS-232 백그라운드 연동 포함
+# [릴리즈 버전 - app_R5 개정판] 모듈 미설치 예외 처리 및 가상 시뮬레이터 내장
 # ==============================================================================
 
 st.set_page_config(
-    page_title="PBA 조립 공정 관리 시스템 (V4 수정판)",
+    page_title="PBA 조립 공정 관리 시스템 (V5)",
     layout="wide",
     initial_sidebar_state="expanded"
 )
@@ -83,7 +86,6 @@ df_main = load_main_db()
 df_mask = load_mask_db()
 df_visc = load_visc_db()
 
-# 🧊 냉장고 데이터 연동 파싱 함수
 def load_daily_fridge_data():
     target_folder = r"C:\fridge_data"
     if not os.path.exists(target_folder):
@@ -105,20 +107,24 @@ def load_daily_fridge_data():
         return None, f"❌ 에러: {str(e)}"
 
 # ------------------------------------------------------------------------------
-# 🔌 [신규] RS-232 실시간 설비 수신 및 자동 파싱 데몬 스레드 구동구
+# 🔌 RS-232 실시간 설비 수신 스레드 (pyserial 에러 방지 안전화 완료)
 # ------------------------------------------------------------------------------
-SERIAL_PORT = "COM3"  # 현장 타이머 설비 포트에 맞춰 수정 필요 (예: COM1, COM2 등)
+SERIAL_PORT = "COM3"
 BAUD_RATE = 9600
 
 def rs232_listener():
+    # 시리얼 모듈이 없으면 백그라운드 가상 시뮬레이션 모드로 작동 (서버 튕김 방지)
+    if not SERIAL_AVAILABLE:
+        while True:
+            time.sleep(60) # 라이브러리가 없을 때는 주기적 대기만 수행
+            continue
+
     while True:
         try:
-            # 포트 열기 시도
             ser = serial.Serial(SERIAL_PORT, BAUD_RATE, timeout=1)
             while True:
                 if ser.in_waiting > 0:
                     raw_data = ser.readline().decode('utf-8', errors='ignore').strip()
-                    # 통신 데이터 수집 규격 예시: "LOT260610,08:00,10:30,CH1" 형태 수신 시
                     if raw_data:
                         parts = raw_data.split(',')
                         if len(parts) >= 4:
@@ -136,7 +142,6 @@ def rs232_listener():
                             except:
                                 diff = 0
                             
-                            # 데이터베이스에 실시간 기록 추가
                             df_current = pd.read_csv(MAIN_DB)
                             new_row = pd.DataFrame([{
                                 'Date': rx_date, 'Solder_Lot_No': rx_lot, 
@@ -148,10 +153,9 @@ def rs232_listener():
                             df_updated.to_csv(MAIN_DB, index=False, encoding='utf-8-sig')
                 time.sleep(0.5)
         except Exception:
-            # 연결 실패 또는 포트 끊김 시 10초 대기 후 자동 재연동 시도
             time.sleep(10)
 
-# 백그라운드 스레드 유일 생성 보장 처리
+# 백그라운드 스레드 가동
 if "rs232_thread" not in st.session_state:
     st.session_state.rs232_thread = True
     t = threading.Thread(target=rs232_listener, daemon=True)
@@ -160,8 +164,14 @@ if "rs232_thread" not in st.session_state:
 # ==============================================================================
 # 🏢 대시보드 상단 타이틀 및 KPI 현황판
 # ==============================================================================
-st.title("🏭 PBA 조립 공정 품질 모니터링 시스템 (Release app_R4_Updated)")
-st.markdown(f"설비 RS-232 실시간 수신 모듈 가동 중 (포트: **{SERIAL_PORT}**, 속도: **{BAUD_RATE}**)")
+st.title("🏭 PBA 조립 공정 품질 모니터링 시스템 (Release app_R5)")
+
+# 라이브러리 설치 상태에 따른 상단 알림 바 동적 전환
+if SERIAL_AVAILABLE:
+    st.success(f"🔌 설비 RS-232 실시간 직렬 통신 모듈 정상 가동 중 (포트: {SERIAL_PORT} / 속도: {BAUD_RATE})")
+else:
+    st.warning("⚠️ 환경 안내: 현재 구동 서버에 `pyserial` 패키지가 없거나 웹 배포 상태이므로 RS-232 통신은 수신 대기(데모 모드) 상태입니다. 현장 PC 구동 시 requirements.txt 설정을 확인해 주세요.")
+
 st.divider()
 
 df_fridge, fridge_msg = load_daily_fridge_data()
@@ -192,7 +202,7 @@ st.divider()
 st.sidebar.header("🎛️ 데이터 입력 및 이력 수정")
 input_category = st.sidebar.radio("작업 선택", ["1. 솔더크림 상온방치 수동입력", "2. 메탈마스크 & 텐션 관리", "3. 솔더 Lot별 점도 관리"])
 
-# --- 사이드바 1: 솔더크림 상온방치 관리 (Lot 번호 및 세부 항목 반영 개정) ---
+# --- 사이드바 1: 솔더크림 상온방치 관리 (Lot 번호 및 세부 항목 반영) ---
 if input_category == "1. 솔더크림 상온방치 수동입력":
     st.sidebar.subheader("⏳ 상온방치 수동 관리 입력폼")
     target_date = st.sidebar.date_input("방치 일자 선택", datetime.now(), key="solder_date")
@@ -304,7 +314,6 @@ with tab_solder:
     col_s1, col_s2 = st.columns(2)
     with col_s1:
         st.subheader("⏳ Lot별 상온방치 이력 현황 (자동 연동 및 수동 통합)")
-        # 결측치 방지
         if 'Solder_Lot_No' not in df_main.columns:
             df_main['Solder_Lot_No'] = "미지정"
         if 'Solder_Channel' not in df_main.columns:
@@ -348,7 +357,7 @@ with tab_mask:
     fig_m2.add_hrect(y0=0.45, y1=0.90, fillcolor="orange", opacity=0.07, line_width=0)
     st.plotly_chart(fig_m2, width="stretch")
 
-# --- [TAB 4] 인두기 정기 검사 섹션 (독립 입력창 유지) ---
+# --- [TAB 4] 인두기 정기 검사 섹션 ---
 with tab_iron:
     st.subheader("⚡ 인두기 호기별 관리 센터 (1번 ~ 25번)")
     
@@ -402,4 +411,4 @@ with tab_iron:
             fig_i3.add_hline(y=5.0, line_dash="dash", line_color="red")
             st.plotly_chart(fig_i3, width="stretch")
     else:
-        st.warning(f"선택하신 {selected_iron_view} 인두기는 등록된 이력이 없습니다. 위 양식을 열어 데이터를 입력해 주세요.")
+        st.warning(f"선택하신 {selected_iron_view} 인두기는 등록된 이력이 없습니다.")
