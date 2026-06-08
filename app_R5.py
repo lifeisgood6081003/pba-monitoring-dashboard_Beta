@@ -20,25 +20,31 @@ except ImportError:
     SERIAL_AVAILABLE = False
 
 # ==============================================================================
-# [릴리즈 버전 - app_R5 개정판] 모듈 미설치 예외 처리 및 가상 시뮬레이터 내장
+# [릴리즈 버전 - app_R5 개정판] 지정 폴더(PBA_MonitoringDB) 파일 저장 버전
 # ==============================================================================
 
 st.set_page_config(
-    page_title="PBA 조립 공정 관리 시스템 (V5)",
+    page_title="PBA 조립 공정 관리 시스템 (V5-폴더지정형)",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
-# 💾 3대 데이터베이스 파일 경로 정의
-MAIN_DB = "pba_main_process.csv"        # 인두기(1-25번), RS-232 상온방치 로그 통합
-MASK_DB = "pba_metal_mask.csv"         # 메탈마스크 모델 직접 입력 및 텐션 5포인트
-VISC_DB = "pba_solder_viscosity.csv"   # 솔더크림 Lot별 5회 측정 및 평균
+# 📂 데이터베이스 전용 저장 폴더 정의 및 자동 생성
+DB_FOLDER = "PBA_MonitoringDB"
+if not os.path.exists(DB_FOLDER):
+    os.makedirs(DB_FOLDER)
+
+# 💾 특정 폴더(PBA_MonitoringDB) 내부의 4대 독립 데이터베이스 파일 경로 바인딩
+SOLDER_DB = os.path.join(DB_FOLDER, "pba_solder_process.csv")      # RS-232 상온방치 및 채널 로그
+IRON_DB = os.path.join(DB_FOLDER, "pba_iron_check.csv")            # 인두기(1-25번) Factor 검사
+MASK_DB = os.path.join(DB_FOLDER, "pba_metal_mask.csv")           # 메탈마스크 모델 및 텐션 5포인트
+VISC_DB = os.path.join(DB_FOLDER, "pba_solder_viscosity.csv")     # 솔더크림 Lot별 5회 측정 및 평균
 
 # ------------------------------------------------------------------------------
 # 📂 데이터베이스 파일 초기화 및 로드 함수들
 # ------------------------------------------------------------------------------
-def load_main_db():
-    if not os.path.exists(MAIN_DB):
+def load_solder_db():
+    if not os.path.exists(SOLDER_DB):
         dates = [(datetime.now() - timedelta(days=i)).strftime('%Y-%m-%d') for i in range(15)][::-1]
         df = pd.DataFrame({
             'Date': dates,
@@ -46,14 +52,23 @@ def load_main_db():
             'Solder_Start_Time': ['08:30']*15,
             'Solder_End_Time': ['10:40']*15,
             'Solder_Leave_Min': [130]*15,
-            'Solder_Channel': ['CH1', 'CH2', 'CH3']*5,
+            'Solder_Channel': ['CH1', 'CH2', 'CH3']*5
+        })
+        df.to_csv(SOLDER_DB, index=False, encoding='utf-8-sig')
+    return pd.read_csv(SOLDER_DB)
+
+def load_iron_db():
+    if not os.path.exists(IRON_DB):
+        dates = [(datetime.now() - timedelta(days=i)).strftime('%Y-%m-%d') for i in range(15)][::-1]
+        df = pd.DataFrame({
+            'Date': dates,
             'Iron_No': [f"{i}번" for i in np.random.randint(1, 26, size=15)],
             'Iron_Temp': np.random.uniform(345.0, 362.0, size=15).round(1),
             'Iron_Leak_Volt': np.random.uniform(0.5, 1.8, size=15).round(2),
             'Iron_Resistance': np.random.uniform(1.0, 4.2, size=15).round(2)
         })
-        df.to_csv(MAIN_DB, index=False, encoding='utf-8-sig')
-    return pd.read_csv(MAIN_DB)
+        df.to_csv(IRON_DB, index=False, encoding='utf-8-sig')
+    return pd.read_csv(IRON_DB)
 
 def load_mask_db():
     if not os.path.exists(MASK_DB):
@@ -82,7 +97,9 @@ def load_visc_db():
         df.to_csv(VISC_DB, index=False, encoding='utf-8-sig')
     return pd.read_csv(VISC_DB)
 
-df_main = load_main_db()
+# 초기 폴더 및 데이터 데이터 프레임 로드
+df_solder = load_solder_db()
+df_iron = load_iron_db()
 df_mask = load_mask_db()
 df_visc = load_visc_db()
 
@@ -107,16 +124,15 @@ def load_daily_fridge_data():
         return None, f"❌ 에러: {str(e)}"
 
 # ------------------------------------------------------------------------------
-# 🔌 RS-232 실시간 설비 수신 스레드 (pyserial 에러 방지 안전화 완료)
+# 🔌 RS-232 실시간 설비 수신 스레드 (지정 폴더 내 SOLDER_DB에 누적 저장)
 # ------------------------------------------------------------------------------
 SERIAL_PORT = "COM3"
 BAUD_RATE = 9600
 
 def rs232_listener():
-    # 시리얼 모듈이 없으면 백그라운드 가상 시뮬레이션 모드로 작동 (서버 튕김 방지)
     if not SERIAL_AVAILABLE:
         while True:
-            time.sleep(60) # 라이브러리가 없을 때는 주기적 대기만 수행
+            time.sleep(60)
             continue
 
     while True:
@@ -142,20 +158,18 @@ def rs232_listener():
                             except:
                                 diff = 0
                             
-                            df_current = pd.read_csv(MAIN_DB)
+                            df_current = pd.read_csv(SOLDER_DB)
                             new_row = pd.DataFrame([{
                                 'Date': rx_date, 'Solder_Lot_No': rx_lot, 
                                 'Solder_Start_Time': rx_start, 'Solder_End_Time': rx_end, 
-                                'Solder_Leave_Min': diff, 'Solder_Channel': rx_ch,
-                                'Iron_No': "임시(미지정)", 'Iron_Temp': 350.0, 'Iron_Leak_Volt': 0.0, 'Iron_Resistance': 0.0
+                                'Solder_Leave_Min': diff, 'Solder_Channel': rx_ch
                             }])
                             df_updated = pd.concat([df_current, new_row], ignore_index=True)
-                            df_updated.to_csv(MAIN_DB, index=False, encoding='utf-8-sig')
+                            df_updated.to_csv(SOLDER_DB, index=False, encoding='utf-8-sig')
                 time.sleep(0.5)
         except Exception:
             time.sleep(10)
 
-# 백그라운드 스레드 가동
 if "rs232_thread" not in st.session_state:
     st.session_state.rs232_thread = True
     t = threading.Thread(target=rs232_listener, daemon=True)
@@ -164,20 +178,20 @@ if "rs232_thread" not in st.session_state:
 # ==============================================================================
 # 🏢 대시보드 상단 타이틀 및 KPI 현황판
 # ==============================================================================
-st.title("🏭 PBA 조립 공정 품질 모니터링 시스템 (Release app_R5)")
+st.title("🏭 PBA 조립 공정 품질 모니터링 시스템 (V5 - 저장폴더 지정형)")
+st.info(f"📂 현재 데이터 파일 저장 폴더: [ {os.path.abspath(DB_FOLDER)} ]")
 
-# 라이브러리 설치 상태에 따른 상단 알림 바 동적 전환
 if SERIAL_AVAILABLE:
     st.success(f"🔌 설비 RS-232 실시간 직렬 통신 모듈 정상 가동 중 (포트: {SERIAL_PORT} / 속도: {BAUD_RATE})")
 else:
-    st.warning("⚠️ 환경 안내: 현재 구동 서버에 `pyserial` 패키지가 없거나 웹 배포 상태이므로 RS-232 통신은 수신 대기(데모 모드) 상태입니다. 현장 PC 구동 시 requirements.txt 설정을 확인해 주세요.")
+    st.warning("⚠️ 환경 안내: 현재 구동 서버에 `pyserial` 패키지가 없거나 수동 복사 전이므로 RS-232 통신은 수신 대기 상태입니다.")
 
 st.divider()
 
 df_fridge, fridge_msg = load_daily_fridge_data()
 current_fridge_temp = df_fridge['Temp'].iloc[-1] if df_fridge is not None and len(df_fridge)>0 else 0.0
-latest_iron_no = df_main['Iron_No'].iloc[-1] if len(df_main)>0 else "N/A"
-latest_iron_temp = df_main['Iron_Temp'].iloc[-1] if len(df_main)>0 else 0.0
+latest_iron_no = df_iron['Iron_No'].iloc[-1] if len(df_iron)>0 else "N/A"
+latest_iron_temp = df_iron['Iron_Temp'].iloc[-1] if len(df_iron)>0 else 0.0
 latest_mask_model = df_mask['Model_Name'].iloc[-1] if len(df_mask)>0 else "없음"
 mask_totals = df_mask.groupby('Model_Name')['Daily_Count'].sum().to_dict()
 latest_mask_total = mask_totals.get(latest_mask_model, 0)
@@ -197,12 +211,12 @@ with kpi4:
 st.divider()
 
 # ==============================================================================
-# 🎛️ 사이드바 - 솔더 및 마스크 직접 입력 컨트롤러
+# 🎛️ 사이드바 - 관리 항목별 입력 폼
 # ==============================================================================
 st.sidebar.header("🎛️ 데이터 입력 및 이력 수정")
 input_category = st.sidebar.radio("작업 선택", ["1. 솔더크림 상온방치 수동입력", "2. 메탈마스크 & 텐션 관리", "3. 솔더 Lot별 점도 관리"])
 
-# --- 사이드바 1: 솔더크림 상온방치 관리 (Lot 번호 및 세부 항목 반영) ---
+# --- 사이드바 1: 솔더크림 상온방치 수동 등록폼 ---
 if input_category == "1. 솔더크림 상온방치 수동입력":
     st.sidebar.subheader("⏳ 상온방치 수동 관리 입력폼")
     target_date = st.sidebar.date_input("방치 일자 선택", datetime.now(), key="solder_date")
@@ -228,12 +242,11 @@ if input_category == "1. 솔더크림 상온방치 수동입력":
         new_data = pd.DataFrame([{
             'Date': date_str, 'Solder_Lot_No': sb_lot, 
             'Solder_Start_Time': sb_start, 'Solder_End_Time': sb_end, 
-            'Solder_Leave_Min': leave_duration, 'Solder_Channel': sb_channel,
-            'Iron_No': "임시(미지정)", 'Iron_Temp': 350.0, 'Iron_Leak_Volt': 0.0, 'Iron_Resistance': 0.0
+            'Solder_Leave_Min': leave_duration, 'Solder_Channel': sb_channel
         }])
-        df_main = pd.concat([df_main, new_data], ignore_index=True).sort_values('Date')
-        df_main.to_csv(MAIN_DB, index=False, encoding='utf-8-sig')
-        st.sidebar.success(f"💾 {sb_lot} 점도 자재 수동 등록 완료!")
+        df_solder = pd.concat([df_solder, new_data], ignore_index=True).sort_values('Date')
+        df_solder.to_csv(SOLDER_DB, index=False, encoding='utf-8-sig')
+        st.sidebar.success(f"💾 {sb_lot} 자재 방치 데이터 추가 완료!")
         st.rerun()
 
 # --- 사이드바 2: 메탈마스크 모델 직접 입력 및 텐션 관리 ---
@@ -309,22 +322,17 @@ with tab_fridge:
         fig_f.add_hrect(y0=3.0, y1=10.0, fillcolor="green", opacity=0.08, line_width=0, annotation_text="정상 범위 (3~10℃)")
         st.plotly_chart(fig_f, width="stretch")
 
-# --- [TAB 2] 솔더크림 상온방치(Lot/채널 통합) 및 점도 관리 섹션 ---
+# --- [TAB 2] 솔더크림 상온방치 및 점도 관리 섹션 ---
 with tab_solder:
     col_s1, col_s2 = st.columns(2)
     with col_s1:
-        st.subheader("⏳ Lot별 상온방치 이력 현황 (자동 연동 및 수동 통합)")
-        if 'Solder_Lot_No' not in df_main.columns:
-            df_main['Solder_Lot_No'] = "미지정"
-        if 'Solder_Channel' not in df_main.columns:
-            df_main['Solder_Channel'] = "미지정"
-            
-        df_main['Status'] = df_main['Solder_Leave_Min'].apply(lambda x: 'OK (2시간이상)' if x >= 120 else 'NG (시간미달)')
+        st.subheader("⏳ Lot별 상온방치 이력 현황")
+        df_solder['Status'] = df_solder['Solder_Leave_Min'].apply(lambda x: 'OK (2시간이상)' if x >= 120 else 'NG (시간미달)')
         
-        fig_s1 = px.bar(df_main, x='Date', y='Solder_Leave_Min', color='Status',
+        fig_s1 = px.bar(df_solder, x='Date', y='Solder_Leave_Min', color='Status',
                         hover_data=['Solder_Lot_No', 'Solder_Start_Time', 'Solder_End_Time', 'Solder_Channel'],
                         color_discrete_map={'OK (2시간이상)': '#2ECC71', 'NG (시간미달)': '#E74C3C'},
-                        text_auto=True, title="일자별 방치 경과 시간 및 합격 여부 (마우스 오버 시 Lot/채널 확인)")
+                        text_auto=True, title="일자별 방치 경과 시간 및 합격 여부")
         fig_s1.add_hline(y=120, line_dash="dash", line_color="black")
         st.plotly_chart(fig_s1, width="stretch")
     with col_s2:
@@ -334,7 +342,7 @@ with tab_solder:
             fig_s2.add_trace(go.Scatter(x=df_visc['Lot_No'], y=df_visc['Average'], mode='lines+markers', name='Lot별 평균값', line=dict(color='blue', width=3)))
             fig_s2.add_hrect(y0=70, y1=300, fillcolor="blue", opacity=0.05, line_width=0)
             st.plotly_chart(fig_s2, width="stretch")
-    st.dataframe(df_main[['Date', 'Solder_Lot_No', 'Solder_Start_Time', 'Solder_End_Time', 'Solder_Leave_Min', 'Solder_Channel', 'Status']].dropna(subset=['Solder_Lot_No']), width="stretch")
+    st.dataframe(df_solder[['Date', 'Solder_Lot_No', 'Solder_Start_Time', 'Solder_End_Time', 'Solder_Leave_Min', 'Solder_Channel', 'Status']], width="stretch")
 
 # --- [TAB 3] 메탈 마스크 타수 및 텐션 관리 섹션 ---
 with tab_mask:
@@ -377,24 +385,25 @@ with tab_iron:
         
         if submit_iron_data:
             i_date_str = iron_date.strftime('%Y-%m-%d')
-            idx_exist = df_main[(df_main['Date'] == i_date_str) & (df_main['Iron_No'] == iron_no_select)].index
+            idx_exist = df_iron[(df_iron['Date'] == i_date_str) & (df_iron['Iron_No'] == iron_no_select)].index
             if not idx_exist.empty:
-                df_main = df_main.drop(idx_exist)
+                df_iron = df_iron.drop(idx_exist)
                 
             new_iron = pd.DataFrame([{
-                'Date': i_date_str, 'Solder_Lot_No': "SYSTEM_CHECK", 
-                'Solder_Start_Time': "00:00", 'Solder_End_Time': "00:00", 'Solder_Leave_Min': 0, 'Solder_Channel': "N/A",
-                'Iron_No': iron_no_select, 'Iron_Temp': round(iron_temp_val, 1), 
-                'Iron_Leak_Volt': round(iron_volt_val, 2), 'Iron_Resistance': round(iron_res_val, 2)
+                'Date': i_date_str, 
+                'Iron_No': iron_no_select, 
+                'Iron_Temp': round(iron_temp_val, 1), 
+                'Iron_Leak_Volt': round(iron_volt_val, 2), 
+                'Iron_Resistance': round(iron_res_val, 2)
             }])
-            df_main = pd.concat([df_main, new_iron], ignore_index=True).sort_values(['Date', 'Iron_No'])
-            df_main.to_csv(MAIN_DB, index=False, encoding='utf-8-sig')
-            st.success(f"💾 {i_date_str} 기준 [{iron_no_select}] 인두기 데이터가 저장되었습니다.")
+            df_iron = pd.concat([df_iron, new_iron], ignore_index=True).sort_values(['Date', 'Iron_No'])
+            df_iron.to_csv(IRON_DB, index=False, encoding='utf-8-sig')
+            st.success(f"💾 데이터가 {DB_FOLDER} 폴더 내부 파일에 안전하게 기록되었습니다.")
             st.rerun()
 
     st.markdown("---")
     selected_iron_view = st.selectbox("🔍 시각화 필터링할 인두기 호기 선택", [f"{i}번" for i in range(1, 26)], key="iron_view_select")
-    df_iron_filtered = df_main[df_main['Iron_No'] == selected_iron_view]
+    df_iron_filtered = df_iron[df_iron['Iron_No'] == selected_iron_view]
     
     if len(df_iron_filtered) > 0:
         col_i1, col_i2, col_i3 = st.columns(3)
@@ -410,5 +419,7 @@ with tab_iron:
             fig_i3 = px.line(df_iron_filtered, x='Date', y='Iron_Resistance', title=f"🔌 {selected_iron_view} 접지 저항 (Spec: 5.0Ω 이하)", markers=True, color_discrete_sequence=['#34495E'])
             fig_i3.add_hline(y=5.0, line_dash="dash", line_color="red")
             st.plotly_chart(fig_i3, width="stretch")
+            
+        st.dataframe(df_iron_filtered[['Date', 'Iron_No', 'Iron_Temp', 'Iron_Leak_Volt', 'Iron_Resistance']], width="stretch")
     else:
         st.warning(f"선택하신 {selected_iron_view} 인두기는 등록된 이력이 없습니다.")
