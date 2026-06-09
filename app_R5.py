@@ -63,7 +63,7 @@ def load_iron_db():
         df = pd.DataFrame({
             'Date': dates,
             'Iron_No': [f"{i}번" for i in np.random.randint(1, 26, size=15)],
-            'Iron_Temp': np.random.uniform(345.0, 362.0, size=15).round(1),
+            'Iron_Temp': np.random.uniform(375.0, 397.0, size=15).round(1),
             'Iron_Leak_Volt': np.random.uniform(0.5, 1.8, size=15).round(2),
             'Iron_Resistance': np.random.uniform(1.0, 4.2, size=15).round(2)
         })
