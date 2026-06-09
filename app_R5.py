@@ -201,9 +201,9 @@ with kpi1:
     f_status = "정상" if 3.0 <= current_fridge_temp <= 10.0 else "🚨 이상"
     st.metric("🧊 냉장고 현재 온도", f"{current_fridge_temp} ℃", delta=f_status)
 with kpi2:
-    st.metric(f"🔥 최근 인두기 온도 ({latest_iron_no})", f"{latest_iron_temp} ℃", "관리기준: 380±15℃")
+    st.metric(f"🔥 최근 인두기 온도 ({latest_iron_no})", f"{latest_iron_temp} ℃", "관리기준: 350±10℃")
 with kpi3:
-    st.metric(f"📐 메탈 마스크 [{latest_mask_model}] 누적사용횟수", f"{latest_mask_total:,} 회", "직접 입력 모델 기준")
+    st.metric(f"📐 마스크 [{latest_mask_model}] 누적타수", f"{latest_mask_total:,} 회", "직접 입력 모델 기준")
 with kpi4:
     latest_visc_avg = df_visc['Average'].iloc[-1] if len(df_visc)>0 else 0.0
     st.metric("🧪 솔더크림 최근 평균점도", f"{latest_visc_avg} Pa·s", "합격 기준 (70~300)")
@@ -250,11 +250,11 @@ if input_category == "1. 솔더크림 상온방치 수동입력":
         st.rerun()
 
 # --- 사이드바 2: 메탈마스크 모델 직접 입력 및 텐션 관리 ---
-elif input_category == "2. 메탈 마스크 & 텐션 관리":
-    st.sidebar.subheader("📐 메탈 마스크 직접입력 및 텐션 제어")
+elif input_category == "2. 메탈마스크 & 텐션 관리":
+    st.sidebar.subheader("📐 마스크 직접입력 및 텐션 제어")
     target_date = st.sidebar.date_input("점검 일자 선택", datetime.now(), key="mask_date")
     date_str = target_date.strftime('%Y-%m-%d')
-    sm_model = st.sidebar.text_input("가동 메탈 마스크 모델명 직접 입력", value="SMT-PRIME-01").strip().upper()
+    sm_model = st.sidebar.text_input("가동 메탈마스크 모델명 직접 입력", value="SMT-PRIME-01").strip().upper()
     
     with st.sidebar.form("mask_form"):
         sm_count = st.number_input("당일 가동 타수 (회)", min_value=0, value=1500)
@@ -265,7 +265,7 @@ elif input_category == "2. 메탈 마스크 & 텐션 관리":
         mp4 = st.number_input("Point 4 (Bottom-Left)", value=0.67, step=0.01)
         mp5 = st.number_input("Point 5 (Bottom-Right)", value=0.66, step=0.01)
         
-        submit_mask = st.form_submit_button("📐 메탈 마스크 정보 저장")
+        submit_mask = st.form_submit_button("📐 마스크 정보 저장")
         
     if submit_mask and sm_model:
         new_mask_data = pd.DataFrame([{
@@ -344,20 +344,20 @@ with tab_solder:
             st.plotly_chart(fig_s2, width="stretch")
     st.dataframe(df_solder[['Date', 'Solder_Lot_No', 'Solder_Start_Time', 'Solder_End_Time', 'Solder_Leave_Min', 'Solder_Channel', 'Status']], width="stretch")
 
-# --- [TAB 3] 메탈 마스크 사용횟수 및 텐션 관리 섹션 ---
+# --- [TAB 3] 메탈 마스크 타수 및 텐션 관리 섹션 ---
 with tab_mask:
-    st.subheader("📐 메탈 마스크 직접 입력 모델별 누적 사용 횟수")
+    st.subheader("📐 메탈 마스크 직접 입력 모델별 누적 가동 타수")
     df_mask_agg = df_mask.groupby('Model_Name').agg(최근작업일=('Date', 'max'), 최근작업타수=('Daily_Count', 'last')).reset_index()
     df_mask_agg['역대_총_누적_타수'] = df_mask_agg['Model_Name'].map(mask_totals)
     
     col_m1, col_m2 = st.columns([1, 2])
     with col_m1: st.dataframe(df_mask_agg, width="stretch")
     with col_m2:
-        fig_m1 = px.bar(df_mask, x='Date', y='Daily_Count', color='Model_Name', title="일자별/모델별 메탈 마스크 실적 분포", text_auto=True)
+        fig_m1 = px.bar(df_mask, x='Date', y='Daily_Count', color='Model_Name', title="일자별/모델별 마스크 실적 분포", text_auto=True)
         st.plotly_chart(fig_m1, width="stretch")
         
     st.divider()
-    st.subheader("📌 메탈 마스크 5개 포인트 텐션 모니터링 (0.45mm - 0.90mm)")
+    st.subheader("📌 메탈마스크 5개 포인트 텐션 모니터링 (0.45mm - 0.90mm)")
     fig_m2 = go.Figure()
     x_labels = df_mask['Date'] + " (" + df_mask['Model_Name'] + ")"
     for col in ['P1_Center', 'P2_TopLeft', 'P3_TopRight', 'P4_BotLeft', 'P5_BotRight']:
@@ -408,8 +408,8 @@ with tab_iron:
     if len(df_iron_filtered) > 0:
         col_i1, col_i2, col_i3 = st.columns(3)
         with col_i1:
-            fig_i1 = px.line(df_iron_filtered, x='Date', y='Iron_Temp', title=f"🌡️ {selected_iron_view} 팁 온도 트렌드 (380±15℃)", markers=True, color_discrete_sequence=['#E67E22'])
-            fig_i1.add_hrect(y0=365.0, y1=395.0, fillcolor="orange", opacity=0.1, annotation_text="정상범위")
+            fig_i1 = px.line(df_iron_filtered, x='Date', y='Iron_Temp', title=f"🌡️ {selected_iron_view} 팁 온도 트렌드 (350±10℃)", markers=True, color_discrete_sequence=['#E67E22'])
+            fig_i1.add_hrect(y0=340.0, y1=360.0, fillcolor="orange", opacity=0.1, annotation_text="정상범위")
             st.plotly_chart(fig_i1, width="stretch")
         with col_i2:
             fig_i2 = px.bar(df_iron_filtered, x='Date', y='Iron_Leak_Volt', title=f"⚡ {selected_iron_view} 누설 전압 (Spec: 2.0mV 이하)", color_discrete_sequence=['#9B59B6'])
