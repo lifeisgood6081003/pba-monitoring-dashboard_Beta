@@ -19,9 +19,9 @@ try:
 except ImportError:
     SERIAL_AVAILABLE = False
 
-# ==============================================================================
-# [릴리즈 버전 - app_R5 개정판] 지정 폴더(PBA_MonitoringDB) 파일 저장 버전
-# ==============================================================================
+# ====================================================================================
+# [릴리즈 버전 - app_R5 개정판] 지정 폴더(PBA_MonitoringDB) 파일 저장 버전,인두기온도수정
+# ====================================================================================
 
 st.set_page_config(
     page_title="PBA 조립 공정 관리 시스템 (V5-폴더지정형)",
@@ -201,7 +201,7 @@ with kpi1:
     f_status = "정상" if 3.0 <= current_fridge_temp <= 10.0 else "🚨 이상"
     st.metric("🧊 냉장고 현재 온도", f"{current_fridge_temp} ℃", delta=f_status)
 with kpi2:
-    st.metric(f"🔥 최근 인두기 온도 ({latest_iron_no})", f"{latest_iron_temp} ℃", "관리기준: 350±10℃")
+    st.metric(f"🔥 최근 인두기 온도 ({latest_iron_no})", f"{latest_iron_temp} ℃", "관리기준: 380±15℃")
 with kpi3:
     st.metric(f"📐 마스크 [{latest_mask_model}] 누적타수", f"{latest_mask_total:,} 회", "직접 입력 모델 기준")
 with kpi4:
@@ -376,7 +376,7 @@ with tab_iron:
             iron_date = st.date_input("측정 일자 지정", datetime.now(), key="iron_input_date")
             iron_no_select = st.selectbox("🎯 인두기 호기 선택", [f"{i}번" for i in range(1, 26)], key="iron_input_no")
         with col_in2:
-            iron_temp_val = st.number_input("인두기 팁 온도 (℃)", min_value=300.0, max_value=450.0, value=350.0, step=1.0)
+            iron_temp_val = st.number_input("인두기 팁 온도 (℃)", min_value=300.0, max_value=450.0, value=380.0, step=1.0)
             iron_volt_val = st.number_input("누설 전압 (mV)", min_value=0.0, value=1.2, step=0.1)
         with col_in3:
             iron_res_val = st.number_input("접지 저항 (Ω)", min_value=0.0, value=2.0, step=0.1)
@@ -408,8 +408,8 @@ with tab_iron:
     if len(df_iron_filtered) > 0:
         col_i1, col_i2, col_i3 = st.columns(3)
         with col_i1:
-            fig_i1 = px.line(df_iron_filtered, x='Date', y='Iron_Temp', title=f"🌡️ {selected_iron_view} 팁 온도 트렌드 (350±10℃)", markers=True, color_discrete_sequence=['#E67E22'])
-            fig_i1.add_hrect(y0=340.0, y1=360.0, fillcolor="orange", opacity=0.1, annotation_text="정상범위")
+            fig_i1 = px.line(df_iron_filtered, x='Date', y='Iron_Temp', title=f"🌡️ {selected_iron_view} 팁 온도 트렌드 (380±15℃)", markers=True, color_discrete_sequence=['#E67E22'])
+            fig_i1.add_hrect(y0=365.0, y1=395.0, fillcolor="orange", opacity=0.1, annotation_text="정상범위")
             st.plotly_chart(fig_i1, width="stretch")
         with col_i2:
             fig_i2 = px.bar(df_iron_filtered, x='Date', y='Iron_Leak_Volt', title=f"⚡ {selected_iron_view} 누설 전압 (Spec: 2.0mV 이하)", color_discrete_sequence=['#9B59B6'])
