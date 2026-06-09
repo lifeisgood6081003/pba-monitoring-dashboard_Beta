@@ -408,8 +408,8 @@ with tab_iron:
     if len(df_iron_filtered) > 0:
         col_i1, col_i2, col_i3 = st.columns(3)
         with col_i1:
-            fig_i1 = px.line(df_iron_filtered, x='Date', y='Iron_Temp', title=f"🌡️ {selected_iron_view} 팁 온도 트렌드 (350±10℃)", markers=True, color_discrete_sequence=['#E67E22'])
-            fig_i1.add_hrect(y0=340.0, y1=360.0, fillcolor="orange", opacity=0.1, annotation_text="정상범위")
+            fig_i1 = px.line(df_iron_filtered, x='Date', y='Iron_Temp', title=f"🌡️ {selected_iron_view} 팁 온도 트렌드 (380±15℃)", markers=True, color_discrete_sequence=['#E67E22'])
+            fig_i1.add_hrect(y0=365.0, y1=395.0, fillcolor="orange", opacity=0.1, annotation_text="정상범위")
             st.plotly_chart(fig_i1, width="stretch")
         with col_i2:
             fig_i2 = px.bar(df_iron_filtered, x='Date', y='Iron_Leak_Volt', title=f"⚡ {selected_iron_view} 누설 전압 (Spec: 2.0mV 이하)", color_discrete_sequence=['#9B59B6'])
