@@ -201,7 +201,7 @@ with kpi1:
     f_status = "정상" if 3.0 <= current_fridge_temp <= 10.0 else "🚨 이상"
     st.metric("🧊 냉장고 현재 온도", f"{current_fridge_temp} ℃", delta=f_status)
 with kpi2:
-    st.metric(f"🔥 최근 인두기 온도 ({latest_iron_no})", f"{latest_iron_temp} ℃", "관리기준: 350±10℃")
+    st.metric(f"🔥 최근 인두기 온도 ({latest_iron_no})", f"{latest_iron_temp} ℃", "관리기준: 380±15℃")
 with kpi3:
     st.metric(f"📐 마스크 [{latest_mask_model}] 누적타수", f"{latest_mask_total:,} 회", "직접 입력 모델 기준")
 with kpi4:
