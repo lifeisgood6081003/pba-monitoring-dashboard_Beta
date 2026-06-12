@@ -111,7 +111,7 @@ def load_remote_fridge_data():
     사내망으로 연결된 냉장고 설비 PC의 공유 폴더에서 가장 최근에 저장된 구형 엑셀(.xls) 
     파일을 찾아 로드합니다. (xlrd 미설치 및 구형 확장자 탐색 예외 처리 강화 버전)
     """
-    network_folder = r"\\192.168.3.248\ShareServer\Refg_fridge_data"
+    network_folder = r"\\192.168.3.248\ShareServer\Refg_Data"
     local_backup_folder = r"C:\fridge_data"
     
     target_folder = network_folder if os.path.exists(network_folder) else local_backup_folder
